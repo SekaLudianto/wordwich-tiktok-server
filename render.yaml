@@ -1,0 +1,27 @@
+# render.yaml — Blueprint for Render.com
+# Asumsi: folder `frontend/server` di-push sebagai root repo Git.
+# Kalau kamu push folder `wordwich` lengkap, ubah `rootDir` di bawah jadi `frontend/server`.
+
+services:
+  - type: web
+    name: wordwich-tiktok
+    runtime: docker
+    plan: free
+    region: singapore
+    # rootDir: frontend/server   # <- uncomment kalau repo root != folder server
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Wajib di-set manual di dashboard Render (sync: false biar tidak ke-commit)
+      - key: TIKTOK_USERNAME
+        sync: false
+      # Opsional: cookies YouTube (paste isi cookies.txt)
+      - key: YT_COOKIES
+        sync: false
+      # Opsional: batasi origin frontend
+      - key: ALLOWED_ORIGINS
+        sync: false

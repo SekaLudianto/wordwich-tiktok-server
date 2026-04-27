@@ -1,0 +1,35 @@
+# fly.toml — Fly.io deployment config
+# Ganti `app` dengan nama unik kamu sebelum `fly launch` (atau biarkan `fly launch` yang generate).
+
+app = "wordwich-tiktok"
+primary_region = "sin"   # Singapore — latency rendah ke TikTok ID/SEA
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+  # ALLOWED_ORIGINS = "https://your-frontend.vercel.app"  # set via `fly secrets` jika perlu
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  # JANGAN auto-stop: TikTok live connection harus persist
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+    method = "GET"
+    path = "/healthz"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"   # 256mb mungkin tipis untuk yt-dlp + ffmpeg; naikkan kalau OOM
+  cpu_kind = "shared"
+  cpus = 1

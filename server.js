@@ -27,17 +27,35 @@ const COOKIES_PATH = COOKIES_CANDIDATES.find(p => {
 }) || null;
 const HAS_COOKIES = !!COOKIES_PATH;
 
-// Allowed origins for CORS / WebSocket. Set ALLOWED_ORIGINS="https://a.com,https://b.com".
-// Default "*" = allow all (aman untuk dipakai dari frontend manapun).
+// Allowed origins for CORS / WebSocket.
+// Format: ALLOWED_ORIGINS="https://a.com,https://*.vercel.app"
+// - "*" = allow all
+// - Trailing slash di-strip otomatis
+// - Wildcard subdomain didukung: "https://*.vercel.app" cocok ke "https://app-x.vercel.app"
+function normalizeOrigin(o) {
+    return (o || '').trim().replace(/\/+$/, '').toLowerCase();
+}
+
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '*')
     .split(',')
-    .map(s => s.trim())
+    .map(normalizeOrigin)
     .filter(Boolean);
+
+function originMatches(pattern, origin) {
+    if (pattern === origin) return true;
+    if (!pattern.includes('*')) return false;
+    // Convert wildcard pattern to regex
+    const regex = new RegExp(
+        '^' + pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$'
+    );
+    return regex.test(origin);
+}
 
 function isOriginAllowed(origin) {
     if (ALLOWED_ORIGINS.includes('*')) return true;
-    if (!origin) return true;
-    return ALLOWED_ORIGINS.includes(origin);
+    if (!origin) return true; // non-browser client (curl, server-to-server)
+    const norm = normalizeOrigin(origin);
+    return ALLOWED_ORIGINS.some(p => originMatches(p, norm));
 }
 
 

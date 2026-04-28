@@ -12,8 +12,20 @@ const { spawn } = require('child_process');
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 const TIKTOK_USERNAME = process.env.TIKTOK_USERNAME || process.argv[2];
-const COOKIES_PATH = path.join(__dirname, 'cookies.txt');
-const HAS_COOKIES = fs.existsSync(COOKIES_PATH);
+// Cari cookies.txt di beberapa lokasi (urutan prioritas):
+// 1. ENV YT_COOKIES_PATH (custom)
+// 2. /etc/secrets/cookies.txt (Render Secret File)
+// 3. ./cookies.txt (lokal / Docker entrypoint write dari YT_COOKIES env)
+const COOKIES_CANDIDATES = [
+    process.env.YT_COOKIES_PATH,
+    '/etc/secrets/cookies.txt',
+    path.join(__dirname, 'cookies.txt')
+].filter(Boolean);
+
+const COOKIES_PATH = COOKIES_CANDIDATES.find(p => {
+    try { return fs.existsSync(p); } catch { return false; }
+}) || null;
+const HAS_COOKIES = !!COOKIES_PATH;
 
 // Allowed origins for CORS / WebSocket. Set ALLOWED_ORIGINS="https://a.com,https://b.com".
 // Default "*" = allow all (aman untuk dipakai dari frontend manapun).
@@ -441,6 +453,6 @@ server.listen(PORT, HOST, () => {
     console.log(`\n🚀 Server: http://${HOST}:${PORT}`);
     console.log(`🎯 TikTok: @${TIKTOK_USERNAME}`);
     console.log(`🎵 Stream: http://${HOST}:${PORT}/stream/<videoId>`);
-    console.log(`🍪 Cookies: ${HAS_COOKIES ? 'ON (' + COOKIES_PATH + ')' : 'OFF'}`);
+    console.log(`🍪 Cookies: ${HAS_COOKIES ? 'ON (' + COOKIES_PATH + ')' : 'OFF — yt-dlp kemungkinan diblok YouTube'}`);
     console.log(`🌐 CORS: ${ALLOWED_ORIGINS.join(', ')}\n`);
 });

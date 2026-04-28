@@ -133,58 +133,68 @@ app.get('/stream/:videoId', (req, res) => {
     const videoId = req.params.videoId;
     const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-    // Argumen yt-dlp: ambil audio terbaik, output ke stdout
+    // Prioritaskan m4a (audio/mp4) — paling kompatibel di semua browser.
+    // Fallback ke webm kalau m4a tidak tersedia.
     const args = [
-        '-f', 'bestaudio',
+        '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
         '--no-playlist',
-        '-o', '-',             // output ke stdout
+        '-o', '-',
         '--quiet',
         '--no-warnings',
         url
     ];
 
-    // Jika punya cookies YouTube (opsional, bantu bypass pembatasan IP datacenter).
-    // Taruh file cookies.txt di folder ini (atau inject via Fly secret saat deploy).
     if (HAS_COOKIES) {
         args.unshift('--cookies', COOKIES_PATH);
     }
 
     const ytdlp = spawn('yt-dlp', args);
+    const startTime = Date.now();
+    let bytesSent = 0;
+    let clientCancelled = false;
 
-    // Set header sebelum data mengalir
-    res.setHeader('Content-Type', 'audio/webm');
-    res.setHeader('Transfer-Encoding', 'chunked');
+    // Default ke audio/mp4 (m4a). Browser umumnya bisa auto-detect via magic bytes
+    // walau Content-Type tidak persis sama.
+    res.setHeader('Content-Type', 'audio/mp4');
     res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('X-Accel-Buffering', 'no');
+    res.setHeader('Accept-Ranges', 'none');
 
-    // Pipe stdout yt-dlp langsung ke response
+    ytdlp.stdout.on('data', (chunk) => {
+        bytesSent += chunk.length;
+    });
     ytdlp.stdout.pipe(res);
 
     ytdlp.stderr.on('data', (data) => {
-        // Hanya log error yang penting, abaikan progress normal
         const msg = data.toString();
         if (msg.includes('ERROR') || msg.includes('error')) {
-            console.error(`[yt-dlp ERROR] ${msg.trim()}`);
+            console.error(`[yt-dlp ERROR ${videoId}] ${msg.trim()}`);
         }
     });
 
     ytdlp.on('error', (err) => {
-        console.error(`❌ yt-dlp tidak ditemukan: ${err.message}`);
-        console.error('💡 Install dengan: pip install yt-dlp  atau  pip3 install yt-dlp');
+        console.error(`❌ yt-dlp spawn error: ${err.message}`);
         if (!res.headersSent) {
             res.status(500).json({ error: 'yt-dlp tidak terinstall' });
         }
     });
 
-    ytdlp.on('close', (code) => {
-        if (code !== 0 && code !== null) {
-            console.warn(`[yt-dlp] Proses selesai dengan kode: ${code}`);
+    ytdlp.on('close', (code, signal) => {
+        const dur = ((Date.now() - startTime) / 1000).toFixed(1);
+        const kb = (bytesSent / 1024).toFixed(0);
+        if (clientCancelled) {
+            console.log(`[stream ${videoId}] CLIENT CANCEL setelah ${dur}s, ${kb} KB`);
+        } else if (code === 0) {
+            console.log(`[stream ${videoId}] OK ${dur}s, ${kb} KB`);
+        } else {
+            console.warn(`[stream ${videoId}] yt-dlp exit code=${code} signal=${signal} (${dur}s, ${kb} KB)`);
         }
     });
 
-    // Jika client disconnect, kill proses yt-dlp agar tidak bocor
     req.on('close', () => {
-        ytdlp.kill('SIGTERM');
+        if (!res.writableEnded) {
+            clientCancelled = true;
+            ytdlp.kill('SIGTERM');
+        }
     });
 
     res.on('error', () => {

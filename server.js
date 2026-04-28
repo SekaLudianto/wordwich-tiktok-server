@@ -242,18 +242,9 @@ tiktokLiveConnection.on('chat', async (data) => {
     else if (isMod) role = "MOD";
     else if (isFollower) role = "FOLLOWER";
 
-
     console.log(`[${role}] ${data.nickname}: ${msg}`);
 
-
-    if (!isHost && !isMod && !isFollower) {
-        console.log(`[BLOCKED] ${data.nickname}`);
-        return;
-    }
-
-
     broadcast('chat', { ...data, role });
-
 
     // --- PLAY COMMAND ---
     if (msg.toLowerCase().startsWith('!play ')) {

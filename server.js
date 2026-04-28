@@ -166,34 +166,52 @@ app.get('/stream/:videoId', (req, res) => {
 // --- TIKTOK ---
 const tiktokLiveConnection = new WebcastPushConnection(TIKTOK_USERNAME);
 
+// --- RECONNECT LOOP ---
+const RECONNECT_DELAY_MS = 5000;
+let reconnectTimer = null;
+let isConnecting = false;
 
-// reconnect loop
+function scheduleReconnect(reason) {
+    if (reconnectTimer) return; // sudah ada yang dijadwalkan
+    console.log(`🔄 Reconnect dalam ${RECONNECT_DELAY_MS / 1000}s (alasan: ${reason})`);
+    reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connectTikTok();
+    }, RECONNECT_DELAY_MS);
+}
+
 async function connectTikTok() {
+    if (isConnecting) return;
+    isConnecting = true;
     try {
         const state = await tiktokLiveConnection.connect();
         console.log(`✅ Terhubung ke TikTok @${state.roomId}`);
     } catch (err) {
-        console.error('❌ Gagal konek, retry 5 detik...');
-        setTimeout(connectTikTok, 5000);
+        console.error(`❌ Gagal konek: ${err.message || err}`);
+        scheduleReconnect('connect failed');
+    } finally {
+        isConnecting = false;
     }
 }
 connectTikTok();
-
 
 tiktokLiveConnection.on('connected', () => {
     console.log('🟢 CONNECTED');
 });
 
-
 tiktokLiveConnection.on('disconnected', () => {
     console.log('🔌 DISCONNECTED');
+    scheduleReconnect('disconnected');
 });
 
+tiktokLiveConnection.on('streamEnd', () => {
+    console.log('🛑 STREAM END (host stop live)');
+    scheduleReconnect('streamEnd');
+});
 
 tiktokLiveConnection.on('error', (err) => {
-    console.error('❌ ERROR:', err);
+    console.error('❌ ERROR:', err.message || err);
 });
-
 
 // --- UTIL ---
 function canRequest(userId) {
